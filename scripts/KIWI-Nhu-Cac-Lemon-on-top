@@ -1,0 +1,253 @@
+--// LEMON>KIWI CẶC
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local player = Players.LocalPlayer
+
+-- ⚙️ CONFIG
+local keyValue = "kiwi cặc"
+local keyFile = "kiwicdvn_key.txt"
+local ipFile = "kiwicdvnip_ip.txt"
+local bannedFile = "trieudz_banned_ips.txt"
+local discordWebhook = "https://discord.com/api/webhooks/1439114615857614991/MWRkPgHGN7OC4AoRuAcr0iW1JOvNXh2Un59PvVNaW1CDarI62s6093RHaxeBbj6kLVSt"
+
+local hasFileApi = (type(isfile)=="function" and type(readfile)=="function" and type(writefile)=="function")
+
+-- 🌐 Get IP
+local ip = "unknown"
+local ok, res = pcall(function() return game:HttpGet("https://api.ipify.org") end)
+if ok and res and res ~= "" then ip = tostring(res) end
+
+-- đọc key/ip cũ
+local oldKey, oldIP
+if hasFileApi then
+	pcall(function()
+		if isfile(keyFile) then oldKey = readfile(keyFile) end
+		if isfile(ipFile) then oldIP = readfile(ipFile) end
+	end)
+end
+
+-- đọc banned ip (có thêm IP cứng)
+local bannedIPs = {}
+-- thêm IP cố định vào danh sách banned
+bannedIPs["115.76.48.97"] = true
+
+if hasFileApi and isfile(bannedFile) then
+	for line in string.gmatch(readfile(bannedFile).."\n","(.-)\n") do
+		if line ~= "" then bannedIPs[line]=true end
+	end
+end
+
+if bannedIPs[ip] then
+	pcall(function()
+		local embed = {
+			title = "Bị kick - IP bị ban",
+			description = string.format("Người chơi **%s** (ID: %d)\nIP: `%s`", player.Name, player.UserId, ip),
+			color = 16711680
+		}
+		local payload = {username="TrieuHub", embeds={embed}}
+		-- gửi log (nếu HttpService được phép)
+		pcall(function() HttpService:PostAsync(discordWebhook, HttpService:JSONEncode(payload), Enum.HttpContentType.ApplicationJson) end)
+	end)
+	player:Kick("IP của bạn đã bị ban.")
+	return
+end
+
+if oldKey == keyValue and oldIP == ip then
+	print(" TY FOR USE SCRIPT ")
+	pcall(function()
+    	loadstring(game:HttpGet("https://raw.githubusercontent.com/HieuDepTrai-Z/CongDongVietNam/refs/heads/main/KiwiCDVN.lua"))()
+	end)
+	return
+end
+
+if CoreGui:FindFirstChild("GET-KEY") then
+	CoreGui["GET-KEY"]:Destroy()
+end
+
+-- 🎨 UI
+local gui = Instance.new("ScreenGui", CoreGui)
+gui.Name = "GET-KEY"
+gui.ResetOnSpawn = false
+
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.new(0,540,0,320)
+main.Position = UDim2.new(0.5,-270,0.5,-160)
+main.BackgroundColor3 = Color3.fromRGB(40,40,60)
+main.BackgroundTransparency = 0.25
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,18)
+Instance.new("UIStroke", main).Color = Color3.fromRGB(140,255,255)
+
+local bg = Instance.new("ImageLabel", main)
+bg.Image = "rbxassetid://87449687671365"
+bg.Size = UDim2.new(1,0,1,0)
+bg.BackgroundTransparency = 1
+bg.ImageTransparency = 0.25
+Instance.new("UICorner", bg).CornerRadius = UDim.new(0,18)
+
+-- avatar + tên
+local thumb = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+local avatarImg = Instance.new("ImageLabel", main)
+avatarImg.Size = UDim2.new(0,56,0,56)
+avatarImg.Position = UDim2.new(0.05,0,0.03,0)
+avatarImg.BackgroundTransparency = 1
+avatarImg.Image = thumb
+Instance.new("UICorner", avatarImg).CornerRadius = UDim.new(1,0)
+
+local nameLabel = Instance.new("TextLabel", main)
+nameLabel.Size = UDim2.new(0.6,0,0,40)
+nameLabel.Position = UDim2.new(0.16,0,0.03,0)
+nameLabel.BackgroundTransparency = 1
+nameLabel.Font = Enum.Font.Arcade
+nameLabel.TextScaled = true
+nameLabel.TextColor3 = Color3.fromRGB(200,255,255)
+nameLabel.Text = player.DisplayName or player.Name
+nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- input
+local input = Instance.new("TextBox", main)
+input.Size = UDim2.new(0.7,0,0,48)
+input.Position = UDim2.new(0.15,0,0.45,0)
+input.PlaceholderText = " Nhập key "
+input.Font = Enum.Font.Arcade
+input.TextScaled = true
+input.BackgroundColor3 = Color3.fromRGB(60,60,90)
+Instance.new("UICorner", input).CornerRadius = UDim.new(0,10)
+
+-- 🔔 notice
+local notice = Instance.new("TextLabel", main)
+notice.Size = UDim2.new(0.7,0,0,44)
+notice.Position = UDim2.new(0.15,0,0.35,-54)
+notice.BackgroundColor3 = Color3.fromRGB(30,30,40)
+notice.BackgroundTransparency = 1
+notice.Font = Enum.Font.Arcade
+notice.TextScaled = true
+notice.TextColor3 = Color3.fromRGB(220,220,220)
+notice.Text = ""
+notice.TextTransparency = 1
+notice.ZIndex = 5
+Instance.new("UICorner", notice).CornerRadius = UDim.new(0,10)
+Instance.new("UIStroke", notice).Color = Color3.fromRGB(100,150,255)
+
+local function showNotice(txt, col)
+	col = col or Color3.fromRGB(220,220,220)
+	notice.Text = txt
+	notice.TextColor3 = col
+	local tweenIn = TweenService:Create(notice,TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{TextTransparency=0,BackgroundTransparency=0.15})
+	local tweenOut = TweenService:Create(notice,TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{TextTransparency=1,BackgroundTransparency=1})
+	pcall(function() tweenIn:Play() end)
+	task.spawn(function()
+		task.wait(2.2)
+		pcall(function() tweenOut:Play() end)
+		task.wait(0.25)
+		notice.Text = ""
+	end)
+end
+
+-- getkey buttons
+local get1 = Instance.new("ImageButton", main)
+get1.Size = UDim2.new(0,100,0,100)
+get1.Position = UDim2.new(0,60,0.7,0)
+get1.Image = "rbxassetid://113705311432447"
+get1.BackgroundTransparency = 0.1
+Instance.new("UICorner", get1).CornerRadius = UDim.new(1,0)
+
+local get2 = Instance.new("ImageButton", main)
+get2.Size = UDim2.new(0,100,0,100)
+get2.Position = UDim2.new(1,-160,0.7,0)
+get2.Image = "rbxassetid://116828114235759"
+get2.BackgroundTransparency = 0.1
+Instance.new("UICorner", get2).CornerRadius = UDim.new(1,0)
+
+-- button confirm
+local confirm = Instance.new("TextButton", main)
+confirm.Size = UDim2.new(0,180,0,50)
+confirm.Position = UDim2.new(0.5,-90,0.7,30)
+confirm.Text = "XÁC NHẬN"
+confirm.Font = Enum.Font.Arcade
+confirm.TextScaled = true
+confirm.BackgroundColor3 = Color3.fromRGB(100,150,255)
+Instance.new("UICorner", confirm).CornerRadius = UDim.new(0,12)
+
+-- ✅ Gửi Discord (ảnh custom)
+local function reportToDiscord(username, userId, ipaddr, msg)
+	pcall(function()
+		if discordWebhook == "" then return end
+
+		local embed = {
+			title = "Key đúng ",
+			description = msg or ("Người chơi **"..username.."** đã nhập key đúng."),
+			color = 65280,
+			thumbnail = { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9aNQLSf89_s0cUW8dbcZHj4RA2GXiEBPfDiRbE4S4wg&s=10" },
+			fields = {
+				{name=" người chơi", value=username, inline=true},
+				{name=" User ID", value=tostring(userId), inline=true},
+				{name=" IP", value=tostring(ipaddr), inline=false},
+			},
+			footer = {text="TrieuHub Logger • "..os.date("%Y-%m-%d %H:%M:%S")}
+		}
+
+		local payload = {
+			username = "Lemon - Key",
+			avatar_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ5f2DiqA8w-s7O3JQHxaps_2zXvu6IYF7hkzJK9pgrZg&s=10",
+			embeds = {embed}
+		}
+
+		local json = HttpService:JSONEncode(payload)
+		local ok, res
+
+		if syn and syn.request then
+			ok, res = pcall(function() return syn.request({Url=discordWebhook, Method="POST", Headers={["Content-Type"]="application/json"}, Body=json}) end)
+		elseif request then
+			ok, res = pcall(function() return request({Url=discordWebhook, Method="POST", Headers={["Content-Type"]="application/json"}, Body=json}) end)
+		elseif http_request then
+			ok, res = pcall(function() return http_request({Url=discordWebhook, Method="POST", Headers={["Content-Type"]="application/json"}, Body=json}) end)
+		else
+			ok = pcall(function() HttpService:PostAsync(discordWebhook, json, Enum.HttpContentType.ApplicationJson) end)
+		end
+
+		print("[Ty]"..username)
+	end)
+end
+
+-- Nút get key
+get1.MouseButton1Click:Connect(function()
+	pcall(function() setclipboard("https://yeumoney.com/LAjBgF") end)
+	showNotice(" Đã copy Get Key 1!", Color3.fromRGB(120,255,120))
+end)
+get2.MouseButton1Click:Connect(function()
+	pcall(function() setclipboard("https://yeumoney.com/LAjBgF") end)
+	showNotice(" Đã copy Get Key 2!", Color3.fromRGB(120,255,120))
+end)
+
+-- xác nhận key
+confirm.MouseButton1Click:Connect(function()
+	local entered = tostring(input.Text)
+	if entered == keyValue then
+		if hasFileApi then
+			pcall(function()
+				writefile(keyFile,keyValue)
+				writefile(ipFile,ip)
+			end)
+		end
+		showNotice(" Key đúng ", Color3.fromRGB(140,255,140))
+		reportToDiscord(player.Name,player.UserId,ip,player.Name.." đã nhập key .")
+		local tween = TweenService:Create(main,TweenInfo.new(0.9,Enum.EasingStyle.Quad),{BackgroundTransparency=1})
+		tween:Play()
+		for _,v in ipairs(main:GetDescendants()) do
+			if v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox") then
+				pcall(function() TweenService:Create(v,TweenInfo.new(0.9),{TextTransparency=1}):Play() end)
+			elseif v:IsA("ImageLabel") or v:IsA("ImageButton") then
+				pcall(function() TweenService:Create(v,TweenInfo.new(0.9),{ImageTransparency=1}):Play() end)
+			end
+		end
+		task.wait(1)
+		gui:Destroy()
+		pcall(function()
+		    loadstring(game:HttpGet("https://raw.githubusercontent.com/HieuDepTrai-Z/CongDongVietNam/refs/heads/main/KiwiCDVN.lua"))()
+		end)
+	else
+		showNotice(" sai key rùi em", Color3.fromRGB(255,120,120))
+	end
+end)
