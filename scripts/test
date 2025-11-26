@@ -1,0 +1,285 @@
+-- autobountyui.lua
+-- Minimal UI for Kai Hub | Auto Bounty
+-- Exposes: UI.ShowNotification, UI.SetTarget, UI.UpdateTargetsList, UI.UpdateStats
+-- Save this file and host raw on Git (GitHub raw URL) then load with loadstring(HttpGet(url))()
+
+local UI = {}
+UI._notifications = {}
+UI._targetName = "None"
+UI._targets = {}
+UI._stats = {earned = "0", total = "0", current = "0"}
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- helper: safe create instances
+local function new(inst, props)
+    local o = Instance.new(inst)
+    for k,v in pairs(props or {}) do
+        if k ~= "Parent" then o[k] = v end
+    end
+    if props and props.Parent then o.Parent = props.Parent end
+    return o
+end
+
+-- Base ScreenGui
+local screenGui = new("ScreenGui", {Name = "KaiHubAutoBountyUI", ResetOnSpawn = false, Parent = (game:GetService("CoreGui") or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))})
+if syn and syn.protect_gui then pcall(function() syn.protect_gui(screenGui) end) end
+
+-- Main Window
+local main = new("Frame", {
+    Name = "Main",
+    Parent = screenGui,
+    Size = UDim2.new(0, 520, 0, 420),
+    Position = UDim2.new(0.5, -260, 0.5, -210),
+    BackgroundColor3 = Color3.fromRGB(30,30,30),
+    BorderSizePixel = 0,
+})
+local uiCorner = new("UICorner", {Parent = main, CornerRadius = UDim.new(0,8)})
+
+-- Title bar
+local title = new("TextLabel", {
+    Parent = main,
+    Size = UDim2.new(1,0,0,36),
+    BackgroundTransparency = 1,
+    Text = "Kai Hub | Auto Bounty - UI",
+    TextColor3 = Color3.fromRGB(255,255,255),
+    TextScaled = true,
+    Font = Enum.Font.SourceSansBold,
+})
+local closeBtn = new("TextButton", {
+    Parent = main, Size = UDim2.new(0,30,0,22), Position = UDim2.new(1,-36,0,8),
+    Text = "X", Font = Enum.Font.SourceSansBold, TextScaled = true,
+    BackgroundColor3 = Color3.fromRGB(200,50,50), TextColor3 = Color3.fromRGB(255,255,255)
+})
+closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+
+-- Left: Settings scroll
+local left = new("Frame", {Parent = main, Size = UDim2.new(0,290,1, -46), Position = UDim2.new(0,10,0,46), BackgroundTransparency = 1})
+local leftScroll = new("ScrollingFrame", {Parent = left, Size = UDim2.new(1,0,1,0), CanvasSize = UDim2.new(0,0,5,0), BackgroundTransparency = 1, ScrollBarThickness = 6})
+leftScroll.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+local uiList = new("UIListLayout", {Parent = leftScroll, Padding = UDim.new(0,6)}) 
+
+-- Right: Targets & Stats
+local right = new("Frame", {Parent = main, Size = UDim2.new(0,200,1,-46), Position = UDim2.new(0,304,0,46), BackgroundColor3 = Color3.fromRGB(22,22,22)})
+new("UICorner",{Parent = right, CornerRadius = UDim.new(0,6)})
+local targetsLabel = new("TextLabel",{Parent=right, Size=UDim2.new(1,0,0,22), Text="Targets", BackgroundTransparency=1, TextColor3=Color3.fromRGB(255,255,255), TextScaled=false, Font=Enum.Font.SourceSansBold})
+local targetsList = new("ScrollingFrame",{Parent=right, Size=UDim2.new(1,0,0,200), Position=UDim2.new(0,0,0,26), BackgroundTransparency=1, ScrollBarThickness=6})
+local targetsLayout = new("UIListLayout",{Parent=targetsList, Padding=UDim.new(0,4)})
+
+local statsFrame = new("Frame", {Parent = right, Size = UDim2.new(1,0,0,110), Position = UDim2.new(0,0,0,236), BackgroundTransparency = 1})
+local statsTitle = new("TextLabel", {Parent = statsFrame, Size = UDim2.new(1,0,0,22), Text="Stats", BackgroundTransparency=1, TextColor3=Color3.fromRGB(255,255,255), Font=Enum.Font.SourceSansBold})
+local statEarn = new("TextLabel", {Parent=statsFrame, Size=UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,26), BackgroundTransparency=1, Text="Earned: 0", TextColor3=Color3.fromRGB(200,200,200), Font=Enum.Font.SourceSans})
+local statTotal = new("TextLabel", {Parent=statsFrame, Size=UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,52), BackgroundTransparency=1, Text="Total: 0", TextColor3=Color3.fromRGB(200,200,200), Font=Enum.Font.SourceSans})
+local statCur = new("TextLabel", {Parent=statsFrame, Size=UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,78), BackgroundTransparency=1, Text="Current Bounty: 0", TextColor3=Color3.fromRGB(200,200,200), Font=Enum.Font.SourceSansSmall})
+
+-- Notification container
+local notifFrame = new("Frame", {Parent = screenGui, Size = UDim2.new(0,300,0,100), Position = UDim2.new(1,-310,0,20), BackgroundTransparency = 1})
+local notifLayout = new("UIListLayout", {Parent = notifFrame, VerticalAlignment = Enum.VerticalAlignment.Top, SortOrder = Enum.SortOrder.LayoutOrder})
+
+-- Utility: create simple label/button pair for settings
+local function makeSection(title)
+    local sec = new("Frame",{Parent=leftScroll, Size=UDim2.new(1,-12,0,120), BackgroundTransparency=1})
+    new("TextLabel",{Parent=sec, Size=UDim2.new(1,0,0,20), Text=title, BackgroundTransparency=1, TextColor3=Color3.fromRGB(255,255,255), Font=Enum.Font.SourceSansBold})
+    return sec
+end
+
+local function makeToggle(parent, name, initial, callback)
+    local row = new("Frame",{Parent=parent, Size=UDim2.new(1,0,0,28), BackgroundTransparency=1})
+    local lbl = new("TextLabel",{Parent=row, Size=UDim2.new(0.65,0,1,0), Text=name, BackgroundTransparency=1, TextColor3=Color3.fromRGB(220,220,220), TextXAlignment=Enum.TextXAlignment.Left})
+    local btn = new("TextButton",{Parent=row, Size=UDim2.new(0.3,0,0.7,0), Position=UDim2.new(0.68,0,0.15,0), Text = initial and "On" or "Off", BackgroundColor3 = initial and Color3.fromRGB(50,170,50) or Color3.fromRGB(100,100,100), TextColor3 = Color3.fromRGB(255,255,255)})
+    btn.MouseButton1Click:Connect(function()
+        local val = btn.Text ~= "On"
+        btn.Text = val and "On" or "Off"
+        btn.BackgroundColor3 = val and Color3.fromRGB(50,170,50) or Color3.fromRGB(100,100,100)
+        pcall(callback, val)
+    end)
+    return btn
+end
+
+local function makeTextbox(parent, name, placeholder, callback)
+    local row = new("Frame",{Parent=parent, Size=UDim2.new(1,0,0,36), BackgroundTransparency=1})
+    new("TextLabel",{Parent=row, Size=UDim2.new(0.36,0,1,0), Text=name, BackgroundTransparency=1, TextColor3=Color3.fromRGB(220,220,220), TextXAlignment=Enum.TextXAlignment.Left})
+    local box = new("TextBox",{Parent=row, Size=UDim2.new(0.62,0,0.8,0), Position=UDim2.new(0.38,0,0.1,0), Text = placeholder or "", ClearTextOnFocus = false, BackgroundColor3 = Color3.fromRGB(40,40,40), TextColor3 = Color3.fromRGB(255,255,255)})
+    box.FocusLost:Connect(function(enter)
+        if enter then pcall(callback, box.Text) end
+    end)
+    return box
+end
+
+-- Build sections matching getgenv().Setting structure
+-- YOU (Team)
+local secYou = makeSection("YOU")
+local teamBox = makeTextbox(secYou, "Team", tostring((getgenv().Setting and getgenv().Setting.YOU and getgenv().Setting.YOU.Team) or "Pirates"), function(v)
+    getgenv().Setting = getgenv().Setting or {}
+    getgenv().Setting.YOU = getgenv().Setting.YOU or {}
+    getgenv().Setting.YOU.Team = v
+end)
+
+-- Webhook
+local secWebhook = makeSection("Webhook")
+local webhookToggle = makeToggle(secWebhook, "Enable Webhook", (getgenv().Setting and getgenv().Setting.Webhook and getgenv().Setting.Webhook.Enabled) or false, function(v)
+    getgenv().Setting.Webhook.Enabled = v
+end)
+local webhookBox = makeTextbox(secWebhook, "Webhook URL", (getgenv().Setting and getgenv().Setting.Webhook and getgenv().Setting.Webhook.Url) or "", function(v) getgenv().Setting.Webhook.Url = v end)
+
+-- Chat
+local secChat = makeSection("Chat")
+local chatToggle = makeToggle(secChat, "Enable Chat Msg", (getgenv().Setting and getgenv().Setting.Chat and getgenv().Setting.Chat.Enabled) or false, function(v) getgenv().Setting.Chat.Enabled = v end)
+local chatListBox = makeTextbox(secChat, "Chat Msg (comma separated)", table.concat((getgenv().Setting and getgenv().Setting.Chat and getgenv().Setting.Chat.List) or {""}, ","), function(v)
+    local t = {}
+    for s in string.gmatch(v, "([^,]+)") do table.insert(t, (s:gsub("^%s*(.-)%s*$","%1"))) end
+    getgenv().Setting.Chat.List = t
+end)
+
+-- Combat groups: Melee / Sword / Gun / Fruit
+local secCombat = makeSection("Combat (Melee/Sword/Gun/Fruit)")
+local mm = getgenv().Setting.Melee or {Enable=true, Z={Enable=true,HoldTime=0.1},X={Enable=true,HoldTime=0.1},C={Enable=true,HoldTime=0.1},Delay=1.5}
+local meleeToggle = makeToggle(secCombat, "Melee Enable", mm.Enable, function(v) getgenv().Setting.Melee.Enable = v end)
+local meleeDelayBox = makeTextbox(secCombat, "Melee Delay (s)", tostring(mm.Delay or 1.5), function(v) getgenv().Setting.Melee.Delay = tonumber(v) or mm.Delay end)
+
+local ss = getgenv().Setting.Sword or {Enable=true,Z={Enable=true,HoldTime=0.1},X={Enable=true,HoldTime=0.1},Delay=1}
+local swordToggle = makeToggle(secCombat, "Sword Enable", ss.Enable, function(v) getgenv().Setting.Sword.Enable = v end)
+local swordDelayBox = makeTextbox(secCombat, "Sword Delay (s)", tostring(ss.Delay or 1), function(v) getgenv().Setting.Sword.Delay = tonumber(v) or ss.Delay end)
+
+local gg = getgenv().Setting.Gun or {Enable=true,Z={Enable=true,HoldTime=0.1},X={Enable=true,HoldTime=0.1},Delay=1,GunMode=false}
+local gunToggle = makeToggle(secCombat, "Gun Enable", gg.Enable, function(v) getgenv().Setting.Gun.Enable = v end)
+local gunModeToggle = makeToggle(secCombat, "Gun Mode (Equip Both)", gg.GunMode, function(v) getgenv().Setting.Gun.GunMode = v end)
+
+local ff = getgenv().Setting.Fruit or {Enable=true,Z={Enable=true,HoldTime=0.1},X={Enable=true,HoldTime=0.1},C={Enable=true,HoldTime=0.1},V={Enable=false,HoldTime=0.1},F={Enable=true,HoldTime=0.1},Delay=1}
+local fruitToggle = makeToggle(secCombat, "Fruit Enable", ff.Enable, function(v) getgenv().Setting.Fruit.Enable = v end)
+local fruitDelayBox = makeTextbox(secCombat, "Fruit Delay (s)", tostring(ff.Delay or 1), function(v) getgenv().Setting.Fruit.Delay = tonumber(v) or ff.Delay end)
+
+-- Skip / Hunt / Another settings
+local secSkip = makeSection("Skip / Hunt / Safety")
+local skipV4 = makeToggle(secSkip, "Skip V4", (getgenv().Setting.Skip and getgenv().Setting.Skip.V4) or true, function(v) getgenv().Setting.Skip.V4 = v end)
+local skipFruit = makeToggle(secSkip, "Skip Fruit", (getgenv().Setting.Skip and getgenv().Setting.Skip.Fruit) or false, function(v) getgenv().Setting.Skip.Fruit = v end)
+local skipListBox = makeTextbox(secSkip, "FruitList (comma sep)", table.concat((getgenv().Setting.Skip and getgenv().Setting.Skip.FruitList) or {"Buddha","Leopard","T-Rex"}, ","), function(v)
+    local t = {}
+    for s in string.gmatch(v, "([^,]+)") do table.insert(t, (s:gsub("^%s*(.-)%s*$","%1"))) end
+    getgenv().Setting.Skip.FruitList = t
+end)
+
+local secAnother = makeSection("Another")
+local autoHopToggle = makeToggle(secAnother, "Auto Server Hop", (getgenv().Setting.Another and getgenv().Setting.Another.AutoServerHop) or true, function(v) getgenv().Setting.Another.AutoServerHop = v end)
+local bountyLockToggle = makeToggle(secAnother, "Bounty Lock", (getgenv().Setting.Another and getgenv().Setting.Another.BountyLock) or false, function(v) getgenv().Setting.Another.BountyLock = v end)
+local bountyLockAtBox = makeTextbox(secAnother, "BountyLockAt (number)", tostring((getgenv().Setting.Another and getgenv().Setting.Another.BountyLockAt) or 30000000), function(v) getgenv().Setting.Another.BountyLockAt = tonumber(v) or getgenv().Setting.Another.BountyLockAt end)
+
+-- Save / Load controls
+local saveRow = new("Frame",{Parent=leftScroll, Size=UDim2.new(1,0,0,40), BackgroundTransparency=1})
+local saveBtn = new("TextButton",{Parent=saveRow, Size=UDim2.new(0.48,0,1,0), Position=UDim2.new(0,0,0,0), Text="Save Settings", BackgroundColor3=Color3.fromRGB(60,140,60)})
+local loadBtn = new("TextButton",{Parent=saveRow, Size=UDim2.new(0.48,0,0.98,0), Position=UDim2.new(0.52,0,0,0), Text="Load Settings", BackgroundColor3=Color3.fromRGB(60,60,140)})
+
+saveBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        if writefile and game:GetService("HttpService") then
+            if not isfolder then -- some executors won't have isfolder - wrap
+                pcall(function() end)
+            end
+            local foldername = "Kai Hub | Auto Bounty"
+            local filename = foldername.."/Settings.json"
+            if not isfolder(foldername) then pcall(function() makefolder(foldername) end) end
+            local json = game:GetService("HttpService"):JSONEncode(getgenv().Setting)
+            writefile(filename, json)
+            UI.ShowNotification("Settings saved to disk", "success")
+        else
+            UI.ShowNotification("Saving not supported in this executor", "warning")
+        end
+    end)
+end)
+
+loadBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        if isfile and readfile and game:GetService("HttpService") then
+            local foldername = "Kai Hub | Auto Bounty"
+            local filename = foldername.."/Settings.json"
+            if isfile(filename) then
+                local settings = game:GetService("HttpService"):JSONDecode(readfile(filename))
+                -- Merge settings into current
+                for category, values in pairs(settings) do
+                    getgenv().Setting[category] = getgenv().Setting[category] or {}
+                    for k,v in pairs(values) do
+                        getgenv().Setting[category][k] = v
+                    end
+                end
+                UI.ShowNotification("Settings loaded from disk", "success")
+            else
+                UI.ShowNotification("No settings file found", "warning")
+            end
+        else
+            UI.ShowNotification("Loading not supported in this executor", "warning")
+        end
+    end)
+end)
+
+-- Targets list updater
+function UI.UpdateTargetsList()
+    -- rebuild list from players (or stored)
+    for _,child in pairs(targetsList:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+    UI._targets = {}
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            table.insert(UI._targets, plr.Name)
+            local btn = new("TextButton",{Parent=targetsList, Size=UDim2.new(1,-8,0,28), Text=plr.Name, BackgroundColor3=Color3.fromRGB(40,40,40), TextColor3=Color3.fromRGB(255,255,255)})
+            btn.MouseButton1Click:Connect(function()
+                UI.SetTarget(plr.Name)
+                if getgenv().targ and getgenv().targ.Name == plr.Name then
+                    UI.ShowNotification("Target locked: "..plr.Name, "success")
+                else
+                    UI.ShowNotification("Target set: "..plr.Name, "info")
+                end
+            end)
+        end
+    end
+end
+
+-- Set target display
+function UI.SetTarget(name)
+    UI._targetName = name or "None"
+    -- update title / highlight (simple)
+    for _,btn in pairs(targetsList:GetChildren()) do
+        if btn:IsA("TextButton") then
+            if btn.Text == name then
+                btn.BackgroundColor3 = Color3.fromRGB(70,130,255)
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+            end
+        end
+    end
+end
+
+-- Small notification system
+function UI.ShowNotification(text, kind)
+    kind = kind or "info"
+    local bg = (kind == "success" and Color3.fromRGB(40,120,40)) or (kind == "warning" and Color3.fromRGB(170,110,20)) or Color3.fromRGB(40,40,80)
+    local nf = new("Frame",{Parent=notifFrame, Size=UDim2.new(1,0,0,40), BackgroundColor3=bg})
+    new("UICorner",{Parent=nf, CornerRadius=UDim.new(0,6)})
+    new("TextLabel",{Parent=nf, Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text=text, TextColor3=Color3.fromRGB(255,255,255), Font=Enum.Font.SourceSans})
+    spawn(function()
+        wait(3.5)
+        if nf and nf.Parent then nf:Destroy() end
+    end)
+end
+
+-- Update stats
+function UI.UpdateStats(earned, total, current)
+    UI._stats.earned = tostring(earned or UI._stats.earned)
+    UI._stats.total = tostring(total or UI._stats.total)
+    UI._stats.current = tostring(current or UI._stats.current)
+    statEarn.Text = "Earned: "..UI._stats.earned
+    statTotal.Text = "Total: "..UI._stats.total
+    statCur.Text = "Current Bounty: "..UI._stats.current
+end
+
+-- Initial population
+UI.UpdateTargetsList()
+UI.UpdateStats("0","0","0")
+
+-- Expose UI API globally for script to call
+return {
+    ShowNotification = UI.ShowNotification,
+    SetTarget = UI.SetTarget,
+    UpdateTargetsList = UI.UpdateTargetsList,
+    UpdateStats = UI.UpdateStats,
+    _internal = UI, -- debug access if needed
+}
